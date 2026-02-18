@@ -4,9 +4,10 @@ interface AuthGateProps {
   loading: boolean;
   error?: string;
   onConnect: (apiKey: string) => Promise<void>;
+  onRunDemo: () => void;
 }
 
-export default function AuthGate({ loading, error, onConnect }: AuthGateProps) {
+export default function AuthGate({ loading, error, onConnect, onRunDemo }: AuthGateProps) {
   const [apiKey, setApiKey] = useState('');
 
   const submit = async (event: FormEvent) => {
@@ -33,6 +34,9 @@ export default function AuthGate({ loading, error, onConnect }: AuthGateProps) {
         />
         <button type="submit" disabled={loading || !apiKey.trim()}>
           {loading ? 'Connecting...' : 'Connect'}
+        </button>
+        <button type="button" className="secondary" onClick={onRunDemo} disabled={loading}>
+          Run in Demo Mode
         </button>
       </form>
       {error ? <p className="error">{error}</p> : null}

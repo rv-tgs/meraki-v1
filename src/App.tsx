@@ -38,6 +38,7 @@ function buildResult(
 
 export default function App() {
   const [apiKey, setApiKey] = useState('');
+  const [isDemoMode, setIsDemoMode] = useState(false);
   const [org, setOrg] = useState<Organization>();
   const [networks, setNetworks] = useState<Network[]>([]);
   const [selectedNetworkId, setSelectedNetworkId] = useState('');
@@ -53,6 +54,7 @@ export default function App() {
 
   const clearSession = () => {
     setApiKey('');
+    setIsDemoMode(false);
     setOrg(undefined);
     setNetworks([]);
     setSelectedNetworkId('');
@@ -79,6 +81,7 @@ export default function App() {
       const firstOrg = organizations[0];
       setOrg(firstOrg);
       setApiKey(key);
+      setIsDemoMode(false);
       setLoadingNetworks(true);
 
       const orgNetworks = await localEndpoints.getOrganizationNetworks(firstOrg.id);
@@ -91,6 +94,37 @@ export default function App() {
       setConnecting(false);
       setLoadingNetworks(false);
     }
+  };
+
+  const runDemoMode = () => {
+    setGlobalError(undefined);
+    setConnecting(false);
+    setLoadingNetworks(false);
+    setApiKey('DEMO_MODE');
+    setIsDemoMode(true);
+    const demoOrg: Organization = { id: 'demo-org-1', name: 'Demo Organization' };
+    const demoNetworks: Network[] = [
+      { id: 'demo-network-1', name: 'HQ Demo Network', productTypes: ['appliance', 'wireless', 'switch'] },
+      { id: 'demo-network-2', name: 'Branch Demo Network', productTypes: ['appliance', 'wireless'] }
+    ];
+    setOrg(demoOrg);
+    setNetworks(demoNetworks);
+    setSelectedNetworkId(demoNetworks[0].id);
+    setCreatedVlans([]);
+  };
+
+  const runOperation = async <T,>(
+    operation: string,
+    payload: unknown,
+    executor: () => Promise<T>
+  ): Promise<OperationResult> => {
+    if (isDemoMode) {
+      return buildResult(operation, payload, {
+        demo: true,
+        message: 'Demo mode enabled. No live Meraki API request was sent.'
+      });
+    }
+    return callOperation(operation, payload, executor);
   };
 
   const callOperation = async <T,>(
@@ -107,45 +141,45 @@ export default function App() {
   };
 
   const submitSsid = async (number: number, payload: SsidPayload) => {
-    if (!endpoints || !selectedNetworkId) {
+    if ((!endpoints && !isDemoMode) || !selectedNetworkId) {
       return buildResult('SSID Update', payload, undefined, { message: 'Missing connection or network selection.' });
     }
-    return callOperation('SSID Update', { number, ...payload }, () =>
-      endpoints.upsertWirelessSsid(selectedNetworkId, number, payload)
+    return runOperation('SSID Update', { number, ...payload }, () =>
+      endpoints!.upsertWirelessSsid(selectedNetworkId, number, payload)
     );
   };
 
   const submitVlanSettings = async (payload: VlanSettingsPayload) => {
-    if (!endpoints || !selectedNetworkId) {
+    if ((!endpoints && !isDemoMode) || !selectedNetworkId) {
       return buildResult('VLAN Settings Update', payload, undefined, {
         message: 'Missing connection or network selection.'
       });
     }
-    return callOperation('VLAN Settings Update', payload, () =>
-      endpoints.updateApplianceVlanSettings(selectedNetworkId, payload)
+    return runOperation('VLAN Settings Update', payload, () =>
+      endpoints!.updateApplianceVlanSettings(selectedNetworkId, payload)
     );
   };
 
   const submitGroupPolicy = async (payload: GroupPolicyPayload) => {
-    if (!endpoints || !selectedNetworkId) {
+    if ((!endpoints && !isDemoMode) || !selectedNetworkId) {
       return buildResult('Group Policy Create', payload, undefined, {
         message: 'Missing connection or network selection.'
       });
     }
-    return callOperation('Group Policy Create', payload, () =>
-      endpoints.createGroupPolicy(selectedNetworkId, payload)
+    return runOperation('Group Policy Create', payload, () =>
+      endpoints!.createGroupPolicy(selectedNetworkId, payload)
     );
   };
 
   const submitVlan = async (payload: CreateVlanPayload) => {
-    if (!endpoints || !selectedNetworkId) {
+    if ((!endpoints && !isDemoMode) || !selectedNetworkId) {
       return buildResult('VLAN Create', payload, undefined, {
         message: 'Missing connection or network selection.'
       });
     }
 
-    const result = await callOperation('VLAN Create', payload, () =>
-      endpoints.createVlan(selectedNetworkId, payload)
+    const result = await runOperation('VLAN Create', payload, () =>
+      endpoints!.createVlan(selectedNetworkId, payload)
     );
 
     if (result.success) {
@@ -162,13 +196,13 @@ export default function App() {
   };
 
   const submitSwitchProfile = async (payload: SwitchPortProfilePayload) => {
-    if (!endpoints || !selectedNetworkId) {
+    if ((!endpoints && !isDemoMode) || !selectedNetworkId) {
       return buildResult('Switch Port Profile Create', payload, undefined, {
         message: 'Missing connection or network selection.'
       });
     }
-    return callOperation('Switch Port Profile Create', payload, () =>
-      endpoints.createSwitchPortProfile(selectedNetworkId, payload)
+    return runOperation('Switch Port Profile Create', payload, () =>
+      endpoints!.createSwitchPortProfile(selectedNetworkId, payload)
     );
   };
 
@@ -184,9 +218,12 @@ export default function App() {
           ) : null}
         </div>
         <p>Automate common Cisco Meraki API configuration tasks.</p>
+        {isDemoMode ? <p className="hint">Running in demo mode. API requests are simulated.</p> : null}
       </header>
 
-      {!apiKey ? <AuthGate loading={connecting} error={globalError} onConnect={connect} /> : null}
+      {!apiKey ? (
+        <AuthGate loading={connecting} error={globalError} onConnect={connect} onRunDemo={runDemoMode} />
+      ) : null}
 
       {apiKey ? (
         <>
