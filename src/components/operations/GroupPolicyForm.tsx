@@ -4,7 +4,6 @@ import { isRequired } from '../../utils/validators';
 import ApiResult from '../common/ApiResult';
 
 interface GroupPolicyFormProps {
-  networkId: string;
   submit: (payload: GroupPolicyPayload) => Promise<OperationResult>;
 }
 
@@ -37,7 +36,7 @@ function buildTemplate(policyName: string): GroupPolicyPayload {
   };
 }
 
-export default function GroupPolicyForm({ networkId, submit }: GroupPolicyFormProps) {
+export default function GroupPolicyForm({ submit }: GroupPolicyFormProps) {
   const [policyName, setPolicyName] = useState('Standard Policy');
   const [jsonText, setJsonText] = useState(() => JSON.stringify(buildTemplate('Standard Policy'), null, 2));
   const [jsonError, setJsonError] = useState<string>();
@@ -90,7 +89,6 @@ export default function GroupPolicyForm({ networkId, submit }: GroupPolicyFormPr
   return (
     <section className="card">
       <h3>Create Group Policy (JSON)</h3>
-      <p>Network: {networkId}</p>
       <p className="hint">Policy name is user-controlled and injected into JSON `name`.</p>
       <form className="stack" onSubmit={onSubmit}>
         <label>

@@ -2,7 +2,6 @@ import type { NetworkSwitchPortProfile, OperationResult } from '../../types/mera
 import ApiResult from '../common/ApiResult';
 
 interface SwitchPortProfilesFromVlansFormProps {
-  networkId: string;
   autoProfileResults: OperationResult[];
   networkProfiles: NetworkSwitchPortProfile[];
   loadingProfiles: boolean;
@@ -11,7 +10,6 @@ interface SwitchPortProfilesFromVlansFormProps {
 }
 
 export default function SwitchPortProfilesFromVlansForm({
-  networkId,
   autoProfileResults,
   networkProfiles,
   loadingProfiles,
@@ -21,7 +19,6 @@ export default function SwitchPortProfilesFromVlansForm({
   return (
     <section className="card">
       <h3>Switch Port Profiles</h3>
-      <p>Network: {networkId}</p>
       <p className="hint">Profiles are auto-created after successful VLAN creation, then listed from GET switch port profiles.</p>
 
       <div className="toolbar-row">

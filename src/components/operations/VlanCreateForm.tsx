@@ -4,7 +4,6 @@ import { isRequired, isValidCidr, isValidIpv4, isValidVlanId } from '../../utils
 import ApiResult from '../common/ApiResult';
 
 interface VlanCreateFormProps {
-  networkId: string;
   applyVlanSettings: (payload: { vlansEnabled: boolean }) => Promise<OperationResult>;
   submitOne: (payload: CreateVlanPayload) => Promise<OperationResult>;
   onAfterBatchDeploy: () => Promise<void>;
@@ -50,7 +49,6 @@ function validateRow(row: VlanRow): string | undefined {
 }
 
 export default function VlanCreateForm({
-  networkId,
   applyVlanSettings,
   submitOne,
   onAfterBatchDeploy
@@ -138,7 +136,6 @@ export default function VlanCreateForm({
   return (
     <section className="card">
       <h3>VLAN Settings + VLAN Batch Deploy</h3>
-      <p>Network: {networkId}</p>
       <p className="hint">When deploying, VLAN settings are applied first. VLAN table is disabled unless VLANs Enabled is ON.</p>
 
       <div className="toolbar-row">

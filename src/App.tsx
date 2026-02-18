@@ -20,6 +20,16 @@ import type {
   VlanSettingsPayload
 } from './types/meraki';
 
+interface ApiLogEntry {
+  timestamp: string;
+  operation: string;
+  method: 'GET' | 'POST' | 'PUT';
+  endpoint: string;
+  requestBody?: unknown;
+  response?: unknown;
+  error?: MerakiApiError;
+}
+
 function buildResult(
   operation: string,
   payload: unknown,
@@ -51,6 +61,7 @@ export default function App() {
   const [globalError, setGlobalError] = useState<string>();
   const [connecting, setConnecting] = useState(false);
   const [loadingNetworks, setLoadingNetworks] = useState(false);
+  const [apiLogs, setApiLogs] = useState<ApiLogEntry[]>([]);
 
   const endpoints = useMemo(() => {
     if (!apiKey) return undefined;
@@ -72,6 +83,36 @@ export default function App() {
     setGlobalError(undefined);
     setConnecting(false);
     setLoadingNetworks(false);
+    setApiLogs([]);
+  };
+
+  const addApiLog = (entry: ApiLogEntry) => {
+    setApiLogs((current) => [entry, ...current]);
+  };
+
+  const formatApiLogs = (logs: ApiLogEntry[]): string => {
+    if (logs.length === 0) {
+      return 'No API calls logged yet.';
+    }
+    return logs
+      .map((log) =>
+        JSON.stringify(
+          {
+            timestamp: log.timestamp,
+            operation: log.operation,
+            request: {
+              method: log.method,
+              endpoint: log.endpoint,
+              body: log.requestBody
+            },
+            response: log.response,
+            error: log.error
+          },
+          null,
+          2
+        )
+      )
+      .join('\n\n');
   };
 
   const callOperation = async <T,>(
@@ -90,15 +131,37 @@ export default function App() {
   const runOperation = async <T,>(
     operation: string,
     payload: unknown,
+    request: { method: 'GET' | 'POST' | 'PUT'; endpoint: string },
     executor: () => Promise<T>
   ): Promise<OperationResult> => {
+    const timestamp = new Date().toISOString();
     if (isDemoMode) {
-      return buildResult(operation, payload, {
+      const response = {
         demo: true,
         message: 'Demo mode enabled. No live Meraki API request was sent.'
+      };
+      addApiLog({
+        timestamp,
+        operation,
+        method: request.method,
+        endpoint: request.endpoint,
+        requestBody: payload,
+        response
       });
+      return buildResult(operation, payload, response);
     }
-    return callOperation(operation, payload, executor);
+
+    const result = await callOperation(operation, payload, executor);
+    addApiLog({
+      timestamp,
+      operation,
+      method: request.method,
+      endpoint: request.endpoint,
+      requestBody: payload,
+      response: result.response,
+      error: result.error
+    });
+    return result;
   };
 
   const refreshSwitchProfiles = useCallback(
@@ -119,16 +182,37 @@ export default function App() {
           ];
           setNetworkSwitchProfiles(demoProfiles);
           setSwitchProfilesLastUpdated(new Date().toISOString());
+          addApiLog({
+            timestamp: new Date().toISOString(),
+            operation: 'Get Switch Port Profiles',
+            method: 'GET',
+            endpoint: `/networks/${networkId}/switch/ports/profiles`,
+            response: demoProfiles
+          });
           return;
         }
 
         const profiles = await endpoints!.getNetworkSwitchPortProfiles(networkId);
         setNetworkSwitchProfiles(profiles);
         setSwitchProfilesLastUpdated(new Date().toISOString());
+        addApiLog({
+          timestamp: new Date().toISOString(),
+          operation: 'Get Switch Port Profiles',
+          method: 'GET',
+          endpoint: `/networks/${networkId}/switch/ports/profiles`,
+          response: profiles
+        });
       } catch (error) {
         const apiError = error as MerakiApiError;
         setNetworkSwitchProfiles([]);
         setSwitchProfilesError(apiError.message || 'Failed to load switch port profiles.');
+        addApiLog({
+          timestamp: new Date().toISOString(),
+          operation: 'Get Switch Port Profiles',
+          method: 'GET',
+          endpoint: `/networks/${networkId}/switch/ports/profiles`,
+          error: apiError
+        });
       } finally {
         setSwitchProfilesLoading(false);
       }
@@ -150,6 +234,13 @@ export default function App() {
     try {
       const localEndpoints = buildEndpoints(key);
       const organizations = await localEndpoints.getOrganizations();
+      addApiLog({
+        timestamp: new Date().toISOString(),
+        operation: 'Get Organizations',
+        method: 'GET',
+        endpoint: '/organizations',
+        response: organizations
+      });
 
       if (!organizations.length) {
         setGlobalError('No organizations found for this API key.');
@@ -164,6 +255,13 @@ export default function App() {
       setLoadingNetworks(true);
 
       const orgNetworks = await localEndpoints.getOrganizationNetworks(firstOrg.id);
+      addApiLog({
+        timestamp: new Date().toISOString(),
+        operation: 'Get Organization Networks',
+        method: 'GET',
+        endpoint: `/organizations/${firstOrg.id}/networks`,
+        response: orgNetworks
+      });
       setNetworks(orgNetworks);
       setSelectedNetworkId(orgNetworks[0]?.id ?? '');
       setCreatedVlans([]);
@@ -203,7 +301,11 @@ export default function App() {
     if ((!endpoints && !isDemoMode) || !selectedNetworkId) {
       return buildResult('SSID Update', payload, undefined, { message: 'Missing connection or network selection.' });
     }
-    return runOperation('SSID Update', { number, ...payload }, () =>
+    return runOperation(
+      'SSID Update',
+      { number, ...payload },
+      { method: 'PUT', endpoint: `/networks/${selectedNetworkId}/wireless/ssids/${number}` },
+      () =>
       endpoints!.upsertWirelessSsid(selectedNetworkId, number, payload)
     );
   };
@@ -214,7 +316,11 @@ export default function App() {
         message: 'Missing connection or network selection.'
       });
     }
-    return runOperation('VLAN Settings Update', payload, () =>
+    return runOperation(
+      'VLAN Settings Update',
+      payload,
+      { method: 'PUT', endpoint: `/networks/${selectedNetworkId}/appliance/vlans/settings` },
+      () =>
       endpoints!.updateApplianceVlanSettings(selectedNetworkId, payload)
     );
   };
@@ -225,7 +331,11 @@ export default function App() {
         message: 'Missing connection or network selection.'
       });
     }
-    return runOperation('Group Policy Create', payload, () =>
+    return runOperation(
+      'Group Policy Create',
+      payload,
+      { method: 'POST', endpoint: `/networks/${selectedNetworkId}/groupPolicies` },
+      () =>
       endpoints!.createGroupPolicy(selectedNetworkId, payload)
     );
   };
@@ -237,7 +347,11 @@ export default function App() {
       });
     }
 
-    const vlanResult = await runOperation('VLAN Create', payload, () =>
+    const vlanResult = await runOperation(
+      'VLAN Create',
+      payload,
+      { method: 'POST', endpoint: `/networks/${selectedNetworkId}/appliance/vlans` },
+      () =>
       endpoints!.createVlan(selectedNetworkId, payload)
     );
 
@@ -262,7 +376,11 @@ export default function App() {
         }
       };
 
-      const profileResult = await runOperation('Auto Switch Port Profile Create', profilePayload, () =>
+      const profileResult = await runOperation(
+        'Auto Switch Port Profile Create',
+        profilePayload,
+        { method: 'POST', endpoint: `/networks/${selectedNetworkId}/switch/ports/profiles` },
+        () =>
         endpoints!.createSwitchPortProfile(selectedNetworkId, profilePayload)
       );
       setAutoProfileCreateResults((current) => [profileResult, ...current]);
@@ -319,17 +437,15 @@ export default function App() {
           {selectedNetworkId ? (
             <div className="ops-stack">
               <div className="ops-two-col">
-                <SsidForm networkId={selectedNetworkId} submit={submitSsid} />
-                <GroupPolicyForm networkId={selectedNetworkId} submit={submitGroupPolicy} />
+                <SsidForm submit={submitSsid} />
+                <GroupPolicyForm submit={submitGroupPolicy} />
               </div>
               <VlanCreateForm
-                networkId={selectedNetworkId}
                 applyVlanSettings={submitVlanSettings}
                 submitOne={submitVlan}
                 onAfterBatchDeploy={() => refreshSwitchProfiles(selectedNetworkId)}
               />
               <SwitchPortProfilesFromVlansForm
-                networkId={selectedNetworkId}
                 autoProfileResults={autoProfileCreateResults}
                 networkProfiles={networkSwitchProfiles}
                 loadingProfiles={switchProfilesLoading}
@@ -338,6 +454,12 @@ export default function App() {
               />
             </div>
           ) : null}
+
+          <section className="card">
+            <h3>Raw API Log</h3>
+            <p className="hint">Raw request/response history for all API calls from this session.</p>
+            <textarea className="json-box raw-log" readOnly value={formatApiLogs(apiLogs)} />
+          </section>
         </>
       ) : null}
     </main>

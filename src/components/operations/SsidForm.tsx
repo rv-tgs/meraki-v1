@@ -4,7 +4,6 @@ import { isValidPsk } from '../../utils/validators';
 import ApiResult from '../common/ApiResult';
 
 interface SsidFormProps {
-  networkId: string;
   submit: (number: number, payload: SsidPayload) => Promise<OperationResult>;
 }
 
@@ -22,7 +21,7 @@ const defaultRows: SsidRow[] = [
   { number: 1, name: 'Guest-WiFi', enabled: true, psk: '', loading: false }
 ];
 
-export default function SsidForm({ networkId, submit }: SsidFormProps) {
+export default function SsidForm({ submit }: SsidFormProps) {
   const [rows, setRows] = useState<SsidRow[]>(defaultRows);
 
   const setRow = (number: number, patch: Partial<SsidRow>) => {
@@ -63,7 +62,6 @@ export default function SsidForm({ networkId, submit }: SsidFormProps) {
   return (
     <section className="card">
       <h3>Wireless SSID Create/Update</h3>
-      <p>Network: {networkId}</p>
       <p className="hint">SSID 0 and 1 are shown side-by-side. PSK is required (8-63 chars).</p>
 
       <div className="ssid-grid">
