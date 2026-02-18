@@ -317,15 +317,17 @@ export default function App() {
           />
 
           {selectedNetworkId ? (
-            <div className="ops-grid">
-              <SsidForm networkId={selectedNetworkId} submit={submitSsid} />
+            <div className="ops-stack">
+              <div className="ops-two-col">
+                <SsidForm networkId={selectedNetworkId} submit={submitSsid} />
+                <GroupPolicyForm networkId={selectedNetworkId} submit={submitGroupPolicy} />
+              </div>
               <VlanCreateForm
                 networkId={selectedNetworkId}
                 applyVlanSettings={submitVlanSettings}
                 submitOne={submitVlan}
                 onAfterBatchDeploy={() => refreshSwitchProfiles(selectedNetworkId)}
               />
-              <GroupPolicyForm networkId={selectedNetworkId} submit={submitGroupPolicy} />
               <SwitchPortProfilesFromVlansForm
                 networkId={selectedNetworkId}
                 autoProfileResults={autoProfileCreateResults}
