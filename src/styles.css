@@ -48,6 +48,12 @@ header {
   gap: 0.6rem;
 }
 
+.ssid-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -66,6 +72,16 @@ header {
   overflow: auto;
   border: 1px solid #cbd5e1;
   border-radius: 10px;
+}
+
+.table-fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.table-fieldset:disabled {
+  opacity: 0.6;
 }
 
 .vlan-table {
@@ -112,6 +128,7 @@ label {
 }
 
 input,
+textarea,
 select,
 button {
   font: inherit;
@@ -146,6 +163,11 @@ button:disabled {
   font-size: 0.9rem;
 }
 
+.json-box {
+  min-height: 260px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
 .result {
   border-radius: 10px;
   padding: 0.7rem;
@@ -169,4 +191,10 @@ pre {
   padding: 0.7rem;
   border-radius: 8px;
   max-height: 280px;
+}
+
+@media (max-width: 900px) {
+  .ssid-grid {
+    grid-template-columns: 1fr;
+  }
 }

@@ -6,20 +6,17 @@ import GroupPolicyForm from './components/operations/GroupPolicyForm';
 import SsidForm from './components/operations/SsidForm';
 import SwitchPortProfilesFromVlansForm from './components/operations/SwitchPortProfilesFromVlansForm';
 import VlanCreateForm from './components/operations/VlanCreateForm';
-import VlanSettingsForm from './components/operations/VlanSettingsForm';
 import type {
   CreateVlanPayload,
   CreatedVlan,
   GroupPolicyPayload,
   MerakiApiError,
   Network,
-  NetworkDevice,
+  NetworkSwitchPortProfile,
   OperationResult,
   Organization,
   SsidPayload,
-  SwitchPort,
   SwitchPortProfilePayload,
-  SwitchPortView,
   VlanSettingsPayload
 } from './types/meraki';
 
@@ -39,24 +36,6 @@ function buildResult(
   };
 }
 
-function isSwitchDevice(device: NetworkDevice): boolean {
-  if (device.productType === 'switch') return true;
-  return device.model?.startsWith('MS') ?? false;
-}
-
-function toSwitchPortView(device: NetworkDevice, ports: SwitchPort[]): SwitchPortView[] {
-  return ports.map((port) => ({
-    serial: device.serial,
-    deviceName: device.name || device.model || device.serial,
-    portId: port.portId,
-    name: port.name,
-    enabled: port.enabled,
-    type: port.type,
-    vlan: port.vlan,
-    allowedVlans: port.allowedVlans
-  }));
-}
-
 export default function App() {
   const [apiKey, setApiKey] = useState('');
   const [isDemoMode, setIsDemoMode] = useState(false);
@@ -64,10 +43,11 @@ export default function App() {
   const [networks, setNetworks] = useState<Network[]>([]);
   const [selectedNetworkId, setSelectedNetworkId] = useState('');
   const [createdVlans, setCreatedVlans] = useState<CreatedVlan[]>([]);
-  const [switchPorts, setSwitchPorts] = useState<SwitchPortView[]>([]);
-  const [switchPortsLoading, setSwitchPortsLoading] = useState(false);
-  const [switchPortsError, setSwitchPortsError] = useState<string>();
-  const [switchPortsLastUpdated, setSwitchPortsLastUpdated] = useState<string>();
+  const [autoProfileCreateResults, setAutoProfileCreateResults] = useState<OperationResult[]>([]);
+  const [networkSwitchProfiles, setNetworkSwitchProfiles] = useState<NetworkSwitchPortProfile[]>([]);
+  const [switchProfilesLoading, setSwitchProfilesLoading] = useState(false);
+  const [switchProfilesError, setSwitchProfilesError] = useState<string>();
+  const [switchProfilesLastUpdated, setSwitchProfilesLastUpdated] = useState<string>();
   const [globalError, setGlobalError] = useState<string>();
   const [connecting, setConnecting] = useState(false);
   const [loadingNetworks, setLoadingNetworks] = useState(false);
@@ -84,151 +64,14 @@ export default function App() {
     setNetworks([]);
     setSelectedNetworkId('');
     setCreatedVlans([]);
-    setSwitchPorts([]);
-    setSwitchPortsError(undefined);
-    setSwitchPortsLastUpdated(undefined);
-    setSwitchPortsLoading(false);
+    setAutoProfileCreateResults([]);
+    setNetworkSwitchProfiles([]);
+    setSwitchProfilesLoading(false);
+    setSwitchProfilesError(undefined);
+    setSwitchProfilesLastUpdated(undefined);
     setGlobalError(undefined);
     setConnecting(false);
     setLoadingNetworks(false);
-  };
-
-  const refreshSwitchPorts = useCallback(
-    async (networkIdOverride?: string) => {
-      const networkId = networkIdOverride ?? selectedNetworkId;
-      if (!networkId || (!isDemoMode && !endpoints)) {
-        return;
-      }
-
-      setSwitchPortsLoading(true);
-      setSwitchPortsError(undefined);
-
-      try {
-        if (isDemoMode) {
-          const demoPorts: SwitchPortView[] = [
-            {
-              serial: 'Q2XX-DEMO-0001',
-              deviceName: 'Demo Switch HQ',
-              portId: '1',
-              name: 'Uplink',
-              enabled: true,
-              type: 'trunk',
-              vlan: 1,
-              allowedVlans: 'all'
-            },
-            {
-              serial: 'Q2XX-DEMO-0001',
-              deviceName: 'Demo Switch HQ',
-              portId: '2',
-              name: 'Workstation-1',
-              enabled: true,
-              type: 'access',
-              vlan: 10,
-              allowedVlans: '10'
-            },
-            {
-              serial: 'Q2XX-DEMO-0002',
-              deviceName: 'Demo Switch Branch',
-              portId: '3',
-              name: 'Printer',
-              enabled: true,
-              type: 'access',
-              vlan: 20,
-              allowedVlans: '20'
-            }
-          ];
-          setSwitchPorts(demoPorts);
-          setSwitchPortsLastUpdated(new Date().toISOString());
-          return;
-        }
-
-        const devices = await endpoints!.getNetworkDevices(networkId);
-        const switchDevices = devices.filter(isSwitchDevice);
-
-        const settled = await Promise.allSettled(
-          switchDevices.map(async (device) => {
-            const ports = await endpoints!.getDeviceSwitchPorts(device.serial);
-            return toSwitchPortView(device, ports);
-          })
-        );
-
-        const flattened = settled
-          .filter((item): item is PromiseFulfilledResult<SwitchPortView[]> => item.status === 'fulfilled')
-          .flatMap((item) => item.value);
-
-        setSwitchPorts(flattened);
-        setSwitchPortsLastUpdated(new Date().toISOString());
-
-        const failures = settled.filter((item) => item.status === 'rejected').length;
-        if (failures > 0) {
-          setSwitchPortsError(`Loaded switch ports with ${failures} device fetch failure(s).`);
-        }
-      } catch (error) {
-        const apiError = error as MerakiApiError;
-        setSwitchPorts([]);
-        setSwitchPortsError(apiError.message || 'Failed to load switch ports.');
-      } finally {
-        setSwitchPortsLoading(false);
-      }
-    },
-    [selectedNetworkId, isDemoMode, endpoints]
-  );
-
-  useEffect(() => {
-    if (!selectedNetworkId || !apiKey) {
-      return;
-    }
-    void refreshSwitchPorts(selectedNetworkId);
-  }, [selectedNetworkId, apiKey, refreshSwitchPorts]);
-
-  const connect = async (key: string) => {
-    setConnecting(true);
-    setGlobalError(undefined);
-
-    try {
-      const localEndpoints = buildEndpoints(key);
-      const organizations = await localEndpoints.getOrganizations();
-
-      if (!organizations.length) {
-        setGlobalError('No organizations found for this API key.');
-        setConnecting(false);
-        return;
-      }
-
-      const firstOrg = organizations[0];
-      setOrg(firstOrg);
-      setApiKey(key);
-      setIsDemoMode(false);
-      setLoadingNetworks(true);
-
-      const orgNetworks = await localEndpoints.getOrganizationNetworks(firstOrg.id);
-      setNetworks(orgNetworks);
-      setSelectedNetworkId(orgNetworks[0]?.id ?? '');
-      setCreatedVlans([]);
-    } catch (error) {
-      const apiError = error as MerakiApiError;
-      setGlobalError(apiError.message ?? 'Unable to connect to Meraki API.');
-    } finally {
-      setConnecting(false);
-      setLoadingNetworks(false);
-    }
-  };
-
-  const runDemoMode = () => {
-    setGlobalError(undefined);
-    setConnecting(false);
-    setLoadingNetworks(false);
-    setApiKey('DEMO_MODE');
-    setIsDemoMode(true);
-    const demoOrg: Organization = { id: 'demo-org-1', name: 'Demo Organization' };
-    const demoNetworks: Network[] = [
-      { id: 'demo-network-1', name: 'HQ Demo Network', productTypes: ['appliance', 'wireless', 'switch'] },
-      { id: 'demo-network-2', name: 'Branch Demo Network', productTypes: ['appliance', 'wireless'] }
-    ];
-    setOrg(demoOrg);
-    setNetworks(demoNetworks);
-    setSelectedNetworkId(demoNetworks[0].id);
-    setCreatedVlans([]);
   };
 
   const callOperation = async <T,>(
@@ -256,6 +99,104 @@ export default function App() {
       });
     }
     return callOperation(operation, payload, executor);
+  };
+
+  const refreshSwitchProfiles = useCallback(
+    async (networkIdOverride?: string) => {
+      const networkId = networkIdOverride ?? selectedNetworkId;
+      if (!networkId || (!isDemoMode && !endpoints)) {
+        return;
+      }
+
+      setSwitchProfilesLoading(true);
+      setSwitchProfilesError(undefined);
+
+      try {
+        if (isDemoMode) {
+          const demoProfiles: NetworkSwitchPortProfile[] = [
+            { id: 'demo-profile-1', name: 'VLAN10-Users', description: 'Auto profile demo' },
+            { id: 'demo-profile-2', name: 'VLAN20-Guest', description: 'Auto profile demo' }
+          ];
+          setNetworkSwitchProfiles(demoProfiles);
+          setSwitchProfilesLastUpdated(new Date().toISOString());
+          return;
+        }
+
+        const profiles = await endpoints!.getNetworkSwitchPortProfiles(networkId);
+        setNetworkSwitchProfiles(profiles);
+        setSwitchProfilesLastUpdated(new Date().toISOString());
+      } catch (error) {
+        const apiError = error as MerakiApiError;
+        setNetworkSwitchProfiles([]);
+        setSwitchProfilesError(apiError.message || 'Failed to load switch port profiles.');
+      } finally {
+        setSwitchProfilesLoading(false);
+      }
+    },
+    [selectedNetworkId, isDemoMode, endpoints]
+  );
+
+  useEffect(() => {
+    if (!selectedNetworkId || !apiKey) {
+      return;
+    }
+    void refreshSwitchProfiles(selectedNetworkId);
+  }, [selectedNetworkId, apiKey, refreshSwitchProfiles]);
+
+  const connect = async (key: string) => {
+    setConnecting(true);
+    setGlobalError(undefined);
+
+    try {
+      const localEndpoints = buildEndpoints(key);
+      const organizations = await localEndpoints.getOrganizations();
+
+      if (!organizations.length) {
+        setGlobalError('No organizations found for this API key.');
+        setConnecting(false);
+        return;
+      }
+
+      const firstOrg = organizations[0];
+      setOrg(firstOrg);
+      setApiKey(key);
+      setIsDemoMode(false);
+      setLoadingNetworks(true);
+
+      const orgNetworks = await localEndpoints.getOrganizationNetworks(firstOrg.id);
+      setNetworks(orgNetworks);
+      setSelectedNetworkId(orgNetworks[0]?.id ?? '');
+      setCreatedVlans([]);
+      setAutoProfileCreateResults([]);
+      setNetworkSwitchProfiles([]);
+      setSwitchProfilesError(undefined);
+    } catch (error) {
+      const apiError = error as MerakiApiError;
+      setGlobalError(apiError.message ?? 'Unable to connect to Meraki API.');
+    } finally {
+      setConnecting(false);
+      setLoadingNetworks(false);
+    }
+  };
+
+  const runDemoMode = () => {
+    setGlobalError(undefined);
+    setConnecting(false);
+    setLoadingNetworks(false);
+    setApiKey('DEMO_MODE');
+    setIsDemoMode(true);
+    const demoOrg: Organization = { id: 'demo-org-1', name: 'Demo Organization' };
+    const demoNetworks: Network[] = [
+      { id: 'demo-network-1', name: 'HQ Demo Network', productTypes: ['appliance', 'wireless', 'switch'] },
+      { id: 'demo-network-2', name: 'Branch Demo Network', productTypes: ['appliance', 'wireless'] }
+    ];
+    setOrg(demoOrg);
+    setNetworks(demoNetworks);
+    setSelectedNetworkId(demoNetworks[0].id);
+    setCreatedVlans([]);
+    setAutoProfileCreateResults([]);
+    setNetworkSwitchProfiles([]);
+    setSwitchProfilesError(undefined);
   };
 
   const submitSsid = async (number: number, payload: SsidPayload) => {
@@ -296,11 +237,11 @@ export default function App() {
       });
     }
 
-    const result = await runOperation('VLAN Create', payload, () =>
+    const vlanResult = await runOperation('VLAN Create', payload, () =>
       endpoints!.createVlan(selectedNetworkId, payload)
     );
 
-    if (result.success) {
+    if (vlanResult.success) {
       setCreatedVlans((current) => {
         const exists = current.some((item) => item.id === payload.id);
         if (exists) {
@@ -308,20 +249,26 @@ export default function App() {
         }
         return [...current, { id: payload.id, name: payload.name, subnet: payload.subnet }];
       });
+
+      const profilePayload: SwitchPortProfilePayload = {
+        name: `VLAN${payload.id}-${payload.name}`,
+        tags: [`vlan-${payload.id}`, `subnet-${payload.subnet}`],
+        enabled: true,
+        port: {
+          type: 'access',
+          vlan: Number(payload.id),
+          allowedVlans: payload.id,
+          poeEnabled: true
+        }
+      };
+
+      const profileResult = await runOperation('Auto Switch Port Profile Create', profilePayload, () =>
+        endpoints!.createSwitchPortProfile(selectedNetworkId, profilePayload)
+      );
+      setAutoProfileCreateResults((current) => [profileResult, ...current]);
     }
 
-    return result;
-  };
-
-  const submitSwitchProfile = async (payload: SwitchPortProfilePayload) => {
-    if ((!endpoints && !isDemoMode) || !selectedNetworkId) {
-      return buildResult('Switch Port Profile Create', payload, undefined, {
-        message: 'Missing connection or network selection.'
-      });
-    }
-    return runOperation('Switch Port Profile Create', payload, () =>
-      endpoints!.createSwitchPortProfile(selectedNetworkId, payload)
-    );
+    return vlanResult;
   };
 
   return (
@@ -349,8 +296,10 @@ export default function App() {
             <p>
               Auto-selected organization: <strong>{org?.name}</strong> ({org?.id})
             </p>
-            {switchPortsLastUpdated ? (
-              <p className="hint">Switch ports last refreshed: {new Date(switchPortsLastUpdated).toLocaleString()}</p>
+            {switchProfilesLastUpdated ? (
+              <p className="hint">
+                Switch port profiles last refreshed: {new Date(switchProfilesLastUpdated).toLocaleString()}
+              </p>
             ) : null}
           </section>
 
@@ -361,27 +310,29 @@ export default function App() {
             onSelect={(networkId) => {
               setSelectedNetworkId(networkId);
               setCreatedVlans([]);
+              setAutoProfileCreateResults([]);
+              setNetworkSwitchProfiles([]);
+              setSwitchProfilesError(undefined);
             }}
           />
 
           {selectedNetworkId ? (
             <div className="ops-grid">
               <SsidForm networkId={selectedNetworkId} submit={submitSsid} />
-              <VlanSettingsForm networkId={selectedNetworkId} submit={submitVlanSettings} />
-              <GroupPolicyForm networkId={selectedNetworkId} submit={submitGroupPolicy} />
               <VlanCreateForm
                 networkId={selectedNetworkId}
+                applyVlanSettings={submitVlanSettings}
                 submitOne={submitVlan}
-                onAfterBatchDeploy={() => refreshSwitchPorts(selectedNetworkId)}
+                onAfterBatchDeploy={() => refreshSwitchProfiles(selectedNetworkId)}
               />
+              <GroupPolicyForm networkId={selectedNetworkId} submit={submitGroupPolicy} />
               <SwitchPortProfilesFromVlansForm
                 networkId={selectedNetworkId}
-                vlans={createdVlans}
-                switchPorts={switchPorts}
-                loadingSwitchPorts={switchPortsLoading}
-                switchPortsError={switchPortsError}
-                onRefreshSwitchPorts={() => refreshSwitchPorts(selectedNetworkId)}
-                submitOne={submitSwitchProfile}
+                autoProfileResults={autoProfileCreateResults}
+                networkProfiles={networkSwitchProfiles}
+                loadingProfiles={switchProfilesLoading}
+                profilesError={switchProfilesError}
+                onRefreshProfiles={() => refreshSwitchProfiles(selectedNetworkId)}
               />
             </div>
           ) : null}

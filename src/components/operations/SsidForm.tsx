@@ -64,9 +64,9 @@ export default function SsidForm({ networkId, submit }: SsidFormProps) {
     <section className="card">
       <h3>Wireless SSID Create/Update</h3>
       <p>Network: {networkId}</p>
-      <p className="hint">Required defaults: SSID 0 = Corp-WiFi, SSID 1 = Guest-WiFi. PSK must be 8-63 chars.</p>
+      <p className="hint">SSID 0 and 1 are shown side-by-side. PSK is required (8-63 chars).</p>
 
-      <div className="stack">
+      <div className="ssid-grid">
         {rows.map((row) => (
           <div key={row.number} className="card muted">
             <h4>SSID {row.number}</h4>

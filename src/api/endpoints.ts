@@ -3,6 +3,7 @@ import type {
   GroupPolicyPayload,
   Network,
   NetworkDevice,
+  NetworkSwitchPortProfile,
   Organization,
   SsidPayload,
   SwitchPort,
@@ -26,6 +27,9 @@ export function buildEndpoints(apiKey: string) {
 
     getDeviceSwitchPorts: (serial: string, signal?: AbortSignal) =>
       client.request<SwitchPort[]>(`/devices/${serial}/switch/ports`, { signal }),
+
+    getNetworkSwitchPortProfiles: (networkId: string, signal?: AbortSignal) =>
+      client.request<NetworkSwitchPortProfile[]>(`/networks/${networkId}/switch/ports/profiles`, { signal }),
 
     upsertWirelessSsid: (networkId: string, number: number, payload: SsidPayload) =>
       client.request(`/networks/${networkId}/wireless/ssids/${number}`, {

@@ -40,6 +40,14 @@ export interface SwitchPortView {
   allowedVlans?: string;
 }
 
+export interface NetworkSwitchPortProfile {
+  profileId?: string;
+  id?: string;
+  name?: string;
+  description?: string;
+  [key: string]: unknown;
+}
+
 export interface MerakiApiError {
   status?: number;
   message: string;
@@ -57,21 +65,17 @@ export interface SsidPayload {
 
 export interface VlanSettingsPayload {
   vlansEnabled: boolean;
-  mandatoryDhcp?: { enabled: boolean };
 }
 
 export interface GroupPolicyPayload {
   name: string;
-  scheduling?: {
-    enabled: boolean;
+  firewallAndTrafficShaping?: {
+    settings?: string;
+    trafficShapingRules?: unknown[];
+    l3FirewallRules?: unknown[];
+    l7FirewallRules?: unknown[];
   };
-  bandwidth?: {
-    settings: 'network default' | 'ignore network limit' | 'custom';
-    bandwidthLimits?: {
-      limitUp: number;
-      limitDown: number;
-    };
-  };
+  [key: string]: unknown;
 }
 
 export interface CreateVlanPayload {

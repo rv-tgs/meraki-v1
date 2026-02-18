@@ -5,6 +5,7 @@ import ApiResult from '../common/ApiResult';
 
 interface VlanCreateFormProps {
   networkId: string;
+  applyVlanSettings: (payload: { vlansEnabled: boolean }) => Promise<OperationResult>;
   submitOne: (payload: CreateVlanPayload) => Promise<OperationResult>;
   onAfterBatchDeploy: () => Promise<void>;
 }
@@ -48,15 +49,19 @@ function validateRow(row: VlanRow): string | undefined {
   return undefined;
 }
 
-export default function VlanCreateForm({ networkId, submitOne, onAfterBatchDeploy }: VlanCreateFormProps) {
+export default function VlanCreateForm({
+  networkId,
+  applyVlanSettings,
+  submitOne,
+  onAfterBatchDeploy
+}: VlanCreateFormProps) {
+  const [vlansEnabled, setVlansEnabled] = useState(true);
   const [rows, setRows] = useState<VlanRow[]>([makeRow(1), makeRow(2), makeRow(3), makeRow(4), makeRow(5)]);
   const [nextKey, setNextKey] = useState(6);
   const [loading, setLoading] = useState(false);
+  const [settingsResult, setSettingsResult] = useState<OperationResult>();
 
-  const validRows = useMemo(
-    () => rows.filter((row) => rowHasInput(row) && !validateRow(row)),
-    [rows]
-  );
+  const validRows = useMemo(() => rows.filter((row) => rowHasInput(row) && !validateRow(row)), [rows]);
 
   const updateRow = (key: number, patch: Partial<VlanRow>) => {
     setRows((current) => current.map((row) => (row.key === key ? { ...row, ...patch } : row)));
@@ -72,7 +77,19 @@ export default function VlanCreateForm({ networkId, submitOne, onAfterBatchDeplo
   };
 
   const deployBatch = async () => {
+    if (!vlansEnabled) {
+      return;
+    }
+
     setLoading(true);
+
+    const settingsResponse = await applyVlanSettings({ vlansEnabled: true });
+    setSettingsResult(settingsResponse);
+
+    if (!settingsResponse.success) {
+      setLoading(false);
+      return;
+    }
 
     let deployedAny = false;
     const updatedRows: VlanRow[] = [];
@@ -120,70 +137,82 @@ export default function VlanCreateForm({ networkId, submitOne, onAfterBatchDeplo
 
   return (
     <section className="card">
-      <h3>Create VLANs (Batch Table)</h3>
+      <h3>VLAN Settings + VLAN Batch Deploy</h3>
       <p>Network: {networkId}</p>
-      <p className="hint">Strict validation is always on. Fill at least 5 rows and deploy all valid rows together.</p>
-
-      <div className="table-wrap">
-        <table className="vlan-table">
-          <thead>
-            <tr>
-              <th>VLAN ID</th>
-              <th>Name</th>
-              <th>Subnet (CIDR)</th>
-              <th>Appliance IP</th>
-              <th>Group Policy ID (optional)</th>
-              <th>Status</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.key}>
-                <td>
-                  <input value={row.id} onChange={(event) => updateRow(row.key, { id: event.target.value })} />
-                </td>
-                <td>
-                  <input value={row.name} onChange={(event) => updateRow(row.key, { name: event.target.value })} />
-                </td>
-                <td>
-                  <input value={row.subnet} onChange={(event) => updateRow(row.key, { subnet: event.target.value })} />
-                </td>
-                <td>
-                  <input
-                    value={row.applianceIp}
-                    onChange={(event) => updateRow(row.key, { applianceIp: event.target.value })}
-                  />
-                </td>
-                <td>
-                  <input
-                    value={row.groupPolicyId}
-                    onChange={(event) => updateRow(row.key, { groupPolicyId: event.target.value })}
-                  />
-                </td>
-                <td>
-                  {row.status === 'success' ? 'Success' : row.status === 'error' ? `Error: ${row.message}` : 'Idle'}
-                </td>
-                <td>
-                  <button type="button" onClick={() => removeRow(row.key)} disabled={rows.length <= 5 || loading}>
-                    Remove
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <p className="hint">When deploying, VLAN settings are applied first. VLAN table is disabled unless VLANs Enabled is ON.</p>
 
       <div className="toolbar-row">
-        <button type="button" className="secondary" onClick={addRow} disabled={loading}>
-          Add Row
-        </button>
-        <button type="button" onClick={deployBatch} disabled={loading || validRows.length === 0}>
-          {loading ? 'Deploying VLANs...' : `Deploy VLANs (${validRows.length} valid row${validRows.length === 1 ? '' : 's'})`}
-        </button>
+        <label className="checkbox">
+          <input type="checkbox" checked={vlansEnabled} onChange={(event) => setVlansEnabled(event.target.checked)} />
+          VLANs Enabled
+        </label>
       </div>
 
+      {!vlansEnabled ? <p className="hint">Turn on VLANs Enabled to edit/deploy VLAN rows.</p> : null}
+
+      <fieldset className="table-fieldset" disabled={!vlansEnabled || loading}>
+        <div className="table-wrap">
+          <table className="vlan-table">
+            <thead>
+              <tr>
+                <th>VLAN ID</th>
+                <th>Name</th>
+                <th>Subnet (CIDR)</th>
+                <th>Appliance IP</th>
+                <th>Group Policy ID (optional)</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.key}>
+                  <td>
+                    <input value={row.id} onChange={(event) => updateRow(row.key, { id: event.target.value })} />
+                  </td>
+                  <td>
+                    <input value={row.name} onChange={(event) => updateRow(row.key, { name: event.target.value })} />
+                  </td>
+                  <td>
+                    <input value={row.subnet} onChange={(event) => updateRow(row.key, { subnet: event.target.value })} />
+                  </td>
+                  <td>
+                    <input
+                      value={row.applianceIp}
+                      onChange={(event) => updateRow(row.key, { applianceIp: event.target.value })}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      value={row.groupPolicyId}
+                      onChange={(event) => updateRow(row.key, { groupPolicyId: event.target.value })}
+                    />
+                  </td>
+                  <td>
+                    {row.status === 'success' ? 'Success' : row.status === 'error' ? `Error: ${row.message}` : 'Idle'}
+                  </td>
+                  <td>
+                    <button type="button" onClick={() => removeRow(row.key)} disabled={rows.length <= 5}>
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="toolbar-row">
+          <button type="button" className="secondary" onClick={addRow}>
+            Add Row
+          </button>
+          <button type="button" onClick={deployBatch} disabled={loading || validRows.length === 0 || !vlansEnabled}>
+            {loading ? 'Deploying VLANs...' : `Deploy VLANs (${validRows.length} valid row${validRows.length === 1 ? '' : 's'})`}
+          </button>
+        </div>
+      </fieldset>
+
+      <ApiResult result={settingsResult} />
       {rows
         .filter((row) => row.result)
         .map((row) => (
