@@ -9,12 +9,11 @@ interface VlanSettingsFormProps {
 
 export default function VlanSettingsForm({ networkId, submit }: VlanSettingsFormProps) {
   const [vlansEnabled, setVlansEnabled] = useState(true);
-  const [mandatoryDhcp, setMandatoryDhcp] = useState(false);
-  const [strictMode, setStrictMode] = useState(false);
+  const [mandatoryDhcp, setMandatoryDhcp] = useState(true);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<OperationResult>();
 
-  const valid = !strictMode || !vlansEnabled || mandatoryDhcp;
+  const valid = !vlansEnabled || mandatoryDhcp;
 
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -29,6 +28,7 @@ export default function VlanSettingsForm({ networkId, submit }: VlanSettingsForm
     <section className="card">
       <h3>Appliance VLAN Settings</h3>
       <p>Network: {networkId}</p>
+      <p className="hint">Required: when VLANs are enabled, Mandatory DHCP must remain enabled.</p>
       <form className="grid" onSubmit={onSubmit}>
         <label className="checkbox">
           <input type="checkbox" checked={vlansEnabled} onChange={(e) => setVlansEnabled(e.target.checked)} /> VLANs Enabled
@@ -36,13 +36,6 @@ export default function VlanSettingsForm({ networkId, submit }: VlanSettingsForm
         <label className="checkbox">
           <input type="checkbox" checked={mandatoryDhcp} onChange={(e) => setMandatoryDhcp(e.target.checked)} /> Mandatory DHCP Enabled
         </label>
-        <label className="checkbox">
-          <input type="checkbox" checked={strictMode} onChange={(e) => setStrictMode(e.target.checked)} />
-          Strict payload schema
-        </label>
-        {strictMode ? (
-          <p className="hint">Strict mode requires Mandatory DHCP when VLANs are enabled.</p>
-        ) : null}
         <button type="submit" disabled={loading || !valid}>{loading ? 'Updating...' : 'Update VLAN Settings'}</button>
       </form>
       <ApiResult result={result} />

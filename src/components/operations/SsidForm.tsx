@@ -1,7 +1,6 @@
-import { FormEvent, useState } from 'react';
-import type { SsidPayload } from '../../types/meraki';
-import type { OperationResult } from '../../types/meraki';
-import { isValidPsk, isValidSsidNumber } from '../../utils/validators';
+import { useState } from 'react';
+import type { OperationResult, SsidPayload } from '../../types/meraki';
+import { isValidPsk } from '../../utils/validators';
 import ApiResult from '../common/ApiResult';
 
 interface SsidFormProps {
@@ -9,67 +8,97 @@ interface SsidFormProps {
   submit: (number: number, payload: SsidPayload) => Promise<OperationResult>;
 }
 
+interface SsidRow {
+  number: number;
+  name: string;
+  enabled: boolean;
+  psk: string;
+  loading: boolean;
+  result?: OperationResult;
+}
+
+const defaultRows: SsidRow[] = [
+  { number: 0, name: 'Corp-WiFi', enabled: true, psk: '', loading: false },
+  { number: 1, name: 'Guest-WiFi', enabled: true, psk: '', loading: false }
+];
+
 export default function SsidForm({ networkId, submit }: SsidFormProps) {
-  const [number, setNumber] = useState(0);
-  const [name, setName] = useState('Corp-WiFi');
-  const [enabled, setEnabled] = useState(true);
-  const [psk, setPsk] = useState('');
-  const [strictMode, setStrictMode] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<OperationResult>();
+  const [rows, setRows] = useState<SsidRow[]>(defaultRows);
 
-  const pskValid = !strictMode || isValidPsk(psk);
-  const formValid = isValidSsidNumber(number) && !!name.trim() && pskValid;
+  const setRow = (number: number, patch: Partial<SsidRow>) => {
+    setRows((current) => current.map((row) => (row.number === number ? { ...row, ...patch } : row)));
+  };
 
-  const onSubmit = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!formValid) return;
+  const saveRow = async (number: number) => {
+    const row = rows.find((item) => item.number === number);
+    if (!row) return;
 
-    const payload: SsidPayload = {
-      name: name.trim(),
-      enabled,
-      ...(psk ? { psk } : {})
-    };
-
-    if (strictMode) {
-      payload.authMode = 'psk';
-      payload.ipAssignmentMode = 'Bridge mode';
+    const valid = row.name.trim().length > 0 && isValidPsk(row.psk);
+    if (!valid) {
+      setRow(number, {
+        result: {
+          operation: `SSID ${number} Update`,
+          success: false,
+          timestamp: new Date().toISOString(),
+          payload: row,
+          error: { message: 'SSID name is required and PSK must be 8-63 characters.' }
+        }
+      });
+      return;
     }
 
-    setLoading(true);
-    const response = await submit(number, payload);
-    setResult(response);
-    setLoading(false);
+    const payload: SsidPayload = {
+      name: row.name.trim(),
+      enabled: row.enabled,
+      psk: row.psk,
+      authMode: 'psk',
+      ipAssignmentMode: 'Bridge mode'
+    };
+
+    setRow(number, { loading: true });
+    const result = await submit(number, payload);
+    setRow(number, { loading: false, result });
   };
 
   return (
     <section className="card">
       <h3>Wireless SSID Create/Update</h3>
       <p>Network: {networkId}</p>
-      <form className="grid" onSubmit={onSubmit}>
-        <label>
-          SSID Number (0-14)
-          <input type="number" min={0} max={14} value={number} onChange={(e) => setNumber(Number(e.target.value))} />
-        </label>
-        <label>
-          SSID Name
-          <input value={name} onChange={(e) => setName(e.target.value)} />
-        </label>
-        <label>
-          PSK (optional)
-          <input type="password" value={psk} onChange={(e) => setPsk(e.target.value)} />
-        </label>
-        <label className="checkbox">
-          <input type="checkbox" checked={strictMode} onChange={(e) => setStrictMode(e.target.checked)} />
-          Strict payload schema
-        </label>
-        {strictMode ? <p className="hint">Strict mode requires PSK length 8-63 and sets auth mode to PSK.</p> : null}
-        <label className="checkbox">
-          <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} /> Enabled
-        </label>
-        <button type="submit" disabled={loading || !formValid}>{loading ? 'Saving...' : 'Save SSID'}</button>
-      </form>
-      <ApiResult result={result} />
+      <p className="hint">Required defaults: SSID 0 = Corp-WiFi, SSID 1 = Guest-WiFi. PSK must be 8-63 chars.</p>
+
+      <div className="stack">
+        {rows.map((row) => (
+          <div key={row.number} className="card muted">
+            <h4>SSID {row.number}</h4>
+            <div className="grid">
+              <label>
+                SSID Name
+                <input value={row.name} onChange={(event) => setRow(row.number, { name: event.target.value })} />
+              </label>
+              <label>
+                PSK (required)
+                <input
+                  type="password"
+                  value={row.psk}
+                  onChange={(event) => setRow(row.number, { psk: event.target.value })}
+                />
+              </label>
+              <label className="checkbox">
+                <input
+                  type="checkbox"
+                  checked={row.enabled}
+                  onChange={(event) => setRow(row.number, { enabled: event.target.checked })}
+                />
+                Enabled
+              </label>
+              <button type="button" disabled={row.loading} onClick={() => saveRow(row.number)}>
+                {row.loading ? 'Saving...' : `Save SSID ${row.number}`}
+              </button>
+            </div>
+            <ApiResult result={row.result} />
+          </div>
+        ))}
+      </div>
     </section>
   );
 }

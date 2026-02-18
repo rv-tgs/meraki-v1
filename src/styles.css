@@ -55,6 +55,42 @@ header {
   align-items: end;
 }
 
+.toolbar-row {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.table-wrap {
+  overflow: auto;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+}
+
+.vlan-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 900px;
+}
+
+.vlan-table th,
+.vlan-table td {
+  border-bottom: 1px solid #e2e8f0;
+  padding: 0.5rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.vlan-table th {
+  background: #f8fafc;
+}
+
+.vlan-table td input,
+.vlan-table td select {
+  width: 100%;
+}
+
 .ops-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));

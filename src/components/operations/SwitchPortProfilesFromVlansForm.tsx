@@ -1,48 +1,81 @@
-import { FormEvent, useState } from 'react';
-import type { CreatedVlan, OperationResult } from '../../types/meraki';
-import { vlanToSwitchProfile } from '../../utils/mappers';
+import { useEffect, useMemo, useState } from 'react';
+import type { CreatedVlan, OperationResult, SwitchPortProfilePayload, SwitchPortView } from '../../types/meraki';
 import { isRequired, isValidAllowedVlans } from '../../utils/validators';
 import ApiResult from '../common/ApiResult';
 
 interface SwitchPortProfilesFromVlansFormProps {
   networkId: string;
   vlans: CreatedVlan[];
-  submitOne: (payload: { name: string; tags: string[]; enabled: boolean; port: { type: 'access'; vlan: number; allowedVlans: string; poeEnabled: boolean } }) => Promise<OperationResult>;
+  switchPorts: SwitchPortView[];
+  loadingSwitchPorts: boolean;
+  switchPortsError?: string;
+  onRefreshSwitchPorts: () => Promise<void>;
+  submitOne: (payload: SwitchPortProfilePayload) => Promise<OperationResult>;
 }
 
 export default function SwitchPortProfilesFromVlansForm({
   networkId,
   vlans,
+  switchPorts,
+  loadingSwitchPorts,
+  switchPortsError,
+  onRefreshSwitchPorts,
   submitOne
 }: SwitchPortProfilesFromVlansFormProps) {
   const [prefix, setPrefix] = useState('AUTO');
   const [allowedVlans, setAllowedVlans] = useState('all');
-  const [strictMode, setStrictMode] = useState(false);
+  const [selectedVlanId, setSelectedVlanId] = useState('');
+  const [selectedPorts, setSelectedPorts] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<OperationResult[]>([]);
 
-  const strictValid = !strictMode || (isRequired(prefix) && isValidAllowedVlans(allowedVlans));
-  const valid = vlans.length > 0 && strictValid;
+  useEffect(() => {
+    if (!selectedVlanId && vlans.length > 0) {
+      setSelectedVlanId(vlans[0].id);
+    }
+    if (vlans.length === 0) {
+      setSelectedVlanId('');
+    }
+  }, [selectedVlanId, vlans]);
 
-  const onSubmit = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!valid) return;
+  const selectedSwitchPorts = useMemo(
+    () => switchPorts.filter((port) => selectedPorts[`${port.serial}-${port.portId}`]),
+    [switchPorts, selectedPorts]
+  );
+
+  const valid =
+    isRequired(prefix) &&
+    isValidAllowedVlans(allowedVlans) &&
+    isRequired(selectedVlanId) &&
+    selectedSwitchPorts.length > 0;
+
+  const togglePort = (port: SwitchPortView, enabled: boolean) => {
+    const key = `${port.serial}-${port.portId}`;
+    setSelectedPorts((current) => ({ ...current, [key]: enabled }));
+  };
+
+  const submitProfiles = async () => {
+    if (!valid) {
+      return;
+    }
+
     setLoading(true);
-
     const nextResults: OperationResult[] = [];
-    for (const vlan of vlans) {
-      const payload = vlanToSwitchProfile(vlan.id, vlan.name, prefix, allowedVlans);
-      const result = await submitOne({
-        name: payload.name,
-        tags: payload.tags ?? [],
-        enabled: payload.enabled ?? true,
+
+    for (const port of selectedSwitchPorts) {
+      const vlanNum = Number(selectedVlanId);
+      const payload: SwitchPortProfilePayload = {
+        name: `${prefix}-${port.deviceName}-P${port.portId}`,
+        tags: [`device-${port.serial}`, `port-${port.portId}`, `vlan-${selectedVlanId}`],
+        enabled: true,
         port: {
           type: 'access',
-          vlan: payload.port?.vlan ?? Number(vlan.id),
-          allowedVlans: payload.port?.allowedVlans ?? 'all',
-          poeEnabled: payload.port?.poeEnabled ?? true
+          vlan: Number.isNaN(vlanNum) ? undefined : vlanNum,
+          allowedVlans,
+          poeEnabled: true
         }
-      });
+      };
+      const result = await submitOne(payload);
       nextResults.push(result);
     }
 
@@ -52,35 +85,90 @@ export default function SwitchPortProfilesFromVlansForm({
 
   return (
     <section className="card">
-      <h3>Create Switch Port Profiles from Created VLANs</h3>
+      <h3>Create Switch Port Profiles from Live Switch Ports</h3>
       <p>Network: {networkId}</p>
-      {vlans.length === 0 ? (
-        <p>Create at least one VLAN first to auto-generate port profiles.</p>
+      <p className="hint">Switch ports are fetched via GET and refreshed after VLAN deployments.</p>
+
+      <div className="toolbar-row">
+        <button type="button" className="secondary" onClick={() => void onRefreshSwitchPorts()} disabled={loadingSwitchPorts}>
+          {loadingSwitchPorts ? 'Refreshing...' : 'Refresh Switch Ports'}
+        </button>
+      </div>
+
+      {switchPortsError ? <p className="error">{switchPortsError}</p> : null}
+
+      {switchPorts.length === 0 ? (
+        <p>No switch ports available for this network yet.</p>
       ) : (
-        <>
-          <p>Queued VLANs: {vlans.map((vlan) => `${vlan.id}-${vlan.name}`).join(', ')}</p>
-          <form className="grid" onSubmit={onSubmit}>
-            <label>
-              Profile Name Prefix
-              <input value={prefix} onChange={(e) => setPrefix(e.target.value)} />
-            </label>
-            <label>
-              Allowed VLANs
-              <input value={allowedVlans} onChange={(e) => setAllowedVlans(e.target.value)} />
-            </label>
-            <label className="checkbox">
-              <input type="checkbox" checked={strictMode} onChange={(e) => setStrictMode(e.target.checked)} />
-              Strict payload schema
-            </label>
-            {strictMode ? (
-              <p className="hint">Strict mode requires non-empty prefix and Allowed VLANs as all, IDs, or ranges.</p>
-            ) : null}
-            <button type="submit" disabled={loading || !valid}>
-              {loading ? 'Creating profiles...' : 'Create Profiles'}
-            </button>
-          </form>
-        </>
+        <div className="table-wrap">
+          <table className="vlan-table">
+            <thead>
+              <tr>
+                <th>Select</th>
+                <th>Device</th>
+                <th>Serial</th>
+                <th>Port</th>
+                <th>Name</th>
+                <th>Current Type</th>
+                <th>Current VLAN</th>
+                <th>Allowed VLANs</th>
+              </tr>
+            </thead>
+            <tbody>
+              {switchPorts.map((port) => {
+                const key = `${port.serial}-${port.portId}`;
+                return (
+                  <tr key={key}>
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={!!selectedPorts[key]}
+                        onChange={(event) => togglePort(port, event.target.checked)}
+                      />
+                    </td>
+                    <td>{port.deviceName}</td>
+                    <td>{port.serial}</td>
+                    <td>{port.portId}</td>
+                    <td>{port.name || '-'}</td>
+                    <td>{port.type || '-'}</td>
+                    <td>{port.vlan ?? '-'}</td>
+                    <td>{port.allowedVlans || '-'}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
+
+      <div className="grid">
+        <label>
+          VLAN Target (from deployed VLANs)
+          <select value={selectedVlanId} onChange={(event) => setSelectedVlanId(event.target.value)}>
+            <option value="">Choose a VLAN</option>
+            {vlans.map((vlan) => (
+              <option key={vlan.id} value={vlan.id}>
+                {vlan.id} - {vlan.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Profile Name Prefix (required)
+          <input value={prefix} onChange={(event) => setPrefix(event.target.value)} />
+        </label>
+        <label>
+          Allowed VLANs (required format: all, IDs, ranges)
+          <input value={allowedVlans} onChange={(event) => setAllowedVlans(event.target.value)} />
+        </label>
+      </div>
+
+      <div className="toolbar-row">
+        <button type="button" onClick={submitProfiles} disabled={loading || !valid}>
+          {loading ? 'Creating profiles...' : `Create Profiles for ${selectedSwitchPorts.length} selected port(s)`}
+        </button>
+      </div>
+
       {results.map((result, index) => (
         <ApiResult key={`${result.timestamp}-${index}`} result={result} />
       ))}

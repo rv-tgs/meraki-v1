@@ -2,8 +2,10 @@ import type {
   CreateVlanPayload,
   GroupPolicyPayload,
   Network,
+  NetworkDevice,
   Organization,
   SsidPayload,
+  SwitchPort,
   SwitchPortProfilePayload,
   VlanSettingsPayload
 } from '../types/meraki';
@@ -18,6 +20,12 @@ export function buildEndpoints(apiKey: string) {
 
     getOrganizationNetworks: (organizationId: string, signal?: AbortSignal) =>
       client.request<Network[]>(`/organizations/${organizationId}/networks`, { signal }),
+
+    getNetworkDevices: (networkId: string, signal?: AbortSignal) =>
+      client.request<NetworkDevice[]>(`/networks/${networkId}/devices`, { signal }),
+
+    getDeviceSwitchPorts: (serial: string, signal?: AbortSignal) =>
+      client.request<SwitchPort[]>(`/devices/${serial}/switch/ports`, { signal }),
 
     upsertWirelessSsid: (networkId: string, number: number, payload: SsidPayload) =>
       client.request(`/networks/${networkId}/wireless/ssids/${number}`, {

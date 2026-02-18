@@ -13,6 +13,33 @@ export interface Network {
   tags?: string[];
 }
 
+export interface NetworkDevice {
+  serial: string;
+  name?: string;
+  model?: string;
+  productType?: string;
+}
+
+export interface SwitchPort {
+  portId: string;
+  name?: string;
+  enabled?: boolean;
+  type?: 'access' | 'trunk';
+  vlan?: number;
+  allowedVlans?: string;
+}
+
+export interface SwitchPortView {
+  serial: string;
+  deviceName: string;
+  portId: string;
+  name?: string;
+  enabled?: boolean;
+  type?: 'access' | 'trunk';
+  vlan?: number;
+  allowedVlans?: string;
+}
+
 export interface MerakiApiError {
   status?: number;
   message: string;

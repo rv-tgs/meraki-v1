@@ -9,12 +9,12 @@ React + TypeScript app for common Cisco Meraki API workflows.
 - Auto-selects first organization from `GET /organizations`
 - Lists organization networks for user selection
 - Operation panels for:
-  - Update/create wireless SSID
+  - Update/create wireless SSID (default SSID 0 = Corp-WiFi, SSID 1 = Guest-WiFi)
   - Update appliance VLAN settings
   - Create group policy
-  - Create VLAN
-  - Auto-create switch port profiles from created VLANs
-- Per-operation strict payload schema mode for stronger validation
+  - Create VLANs in batch table format (5+ rows)
+  - Create switch port profiles from live GET switch ports
+- Strict payload schema is always enforced (no disable toggle)
 
 ## Local Development
 
